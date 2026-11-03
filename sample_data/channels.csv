@@ -1,0 +1,7 @@
+code,name,kind,commission_rate,fixed_fee,ship_rate_per_500g,settlement_days,claim_window_days
+amazon,Amazon,marketplace,0.12,25.0,45.0,14,45
+flipkart,Flipkart,marketplace,0.14,20.0,50.0,10,45
+shopify,Shopify,d2c,0.02,0.0,0.0,3,30
+shiprocket,Shiprocket,logistics,0.0,0.0,40.0,8,30
+blinkit,Blinkit,quick_commerce,0.0,0.0,0.0,30,60
+zepto,Zepto,quick_commerce,0.0,0.0,0.0,30,60

@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D2C Finance OS</title>
+<style>
+:root{--bg:#f6f7f9;--panel:#fff;--ink:#16181d;--muted:#5d6472;--line:#e3e6eb;--accent:#1f5eff;--accent-ink:#fff;
+--good:#137a3f;--good-bg:#e5f5ec;--warn:#9a5b00;--warn-bg:#fdf1dc;--bad:#b42318;--bad-bg:#fde8e7;--chip:#eef1f5}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--panel:#171a21;--ink:#e8eaee;--muted:#9aa1ad;--line:#2a2f3a;--accent:#6b93ff;--accent-ink:#0b0d12;
+--good:#5fd38d;--good-bg:#12301f;--warn:#f0b75a;--warn-bg:#33270f;--bad:#ff7b72;--bad-bg:#3a1513;--chip:#222733}}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header h1{font-size:16px;margin:0 12px 0 0;white-space:nowrap}header .sp{flex:1}
+select,input,button{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+button{cursor:pointer}button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}button:disabled{opacity:.5;cursor:default}
+nav{display:flex;gap:2px;overflow-x:auto;padding:0 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+nav button{border:0;border-bottom:2px solid transparent;border-radius:0;padding:10px 12px;white-space:nowrap;color:var(--muted);background:none}
+nav button.on{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+main{padding:20px;max-width:1400px;margin:0 auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.kpi .l{color:var(--muted);font-size:12px}.kpi .v{font-size:22px;font-weight:650;margin-top:2px;font-variant-numeric:tabular-nums}.kpi .s{color:var(--muted);font-size:12px;margin-top:2px}
+h2{font-size:15px;margin:0 0 10px}h3{font-size:13px;margin:16px 0 8px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel);margin-bottom:16px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{font-size:12px;color:var(--muted);font-weight:600;background:var(--panel);position:sticky;top:0}td.n,th.n{text-align:right}tr:last-child td{border-bottom:0}
+td.wrap{white-space:normal;min-width:260px}
+.chip{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;background:var(--chip)}
+.good{background:var(--good-bg);color:var(--good)}.warn{background:var(--warn-bg);color:var(--warn)}.bad{background:var(--bad-bg);color:var(--bad)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}.muted{color:var(--muted)}
+.bar{height:8px;border-radius:4px;background:var(--chip);overflow:hidden}.bar i{display:block;height:100%;background:var(--accent)}
+.empty{padding:60px 20px;text-align:center}.note{font-size:12px;color:var(--muted);margin:-6px 0 14px}
+pre{white-space:pre-wrap;background:var(--chip);padding:12px;border-radius:8px;font-size:12px}
+#toast{position:fixed;bottom:16px;right:16px;background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:8px;display:none;max-width:420px}
+@media (max-width:640px){header,nav,main{padding-left:16px;padding-right:16px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>D2C Finance OS</h1>
+  <select id="brand" aria-label="Brand"></select>
+  <label class="muted">As of <input type="date" id="asof"></label>
+  <span class="sp"></span>
+  <button id="rerun">Re-run engines</button>
+  <button id="demo" class="primary">Load demo brand</button>
+</header>
+<nav id="tabs"></nav>
+<main id="view"><div class="empty card">Loading…</div></main>
+<div id="toast"></div>
+<script>
+const TABS=[["overview","Overview"],["recovery","Recovery"],["recon","Reconciliation"],["qc","Quick commerce"],["tax","Tax credits"],
+["books","Books"],["profit","SKU profitability"],["capital","Capital"],["close","Close & audit"],["import","Import data"]];
+const S={brand:null,tab:"overview",asof:null,periods:[]};
+const inr=new Intl.NumberFormat("en-IN",{style:"currency",currency:"INR",maximumFractionDigits:0});
+const inr2=new Intl.NumberFormat("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
+const R=v=>inr.format(v||0), N=v=>inr2.format(v||0), P=v=>((v||0)*100).toFixed(1)+"%";
+const $=s=>document.querySelector(s), esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const toast=m=>{const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",3500)};
+const api=async(p,o={})=>{const sep=p.includes("?")?"&":"?";const r=await fetch(p+(S.asof&&!o.noAsof?sep+"as_of="+S.asof:""),o);
+ if(!r.ok){let d;try{d=(await r.json()).detail}catch{d=r.statusText}throw new Error(d)}return r.headers.get("content-type")?.includes("json")?r.json():r.text()};
+const B=p=>`/api/brands/${S.brand}${p}`;
+const chip=(t,k)=>`<span class="chip ${k||""}">${esc(t)}</span>`;
+const stChip=s=>chip(s.replaceAll("_"," "),{pass:"good",matched:"good",clean:"good",recovered:"good",ok:"good",returned_refunded:"good",
+ warn:"warn",filed:"warn",urgent:"warn",awaiting_settlement:"",awaiting_payout:"",not_in_portal:"bad",fail:"bad",expired:"bad",exception:"bad",
+ missing_in_bank:"bad",amount_mismatch:"bad",short_paid:"bad",unsettled_overdue:"bad",cod_not_remitted:"bad",fees_on_cancelled:"bad",
+ portal_data_missing:"warn",over_deducted:"warn",rejected:"bad",open:"warn"}[s]);
+const kpi=(l,v,s="")=>`<div class="card kpi"><div class="l">${l}</div><div class="v">${v}</div>${s?`<div class="s">${s}</div>`:""}</div>`;
+function table(cols,rows,opt={}){if(!rows.length)return `<div class="card muted">${opt.empty||"Nothing here."}</div>`;
+ return `<div class="tw" ${opt.h?`style="max-height:${opt.h}px"`:""}><table><thead><tr>${cols.map(c=>`<th class="${c.n?"n":""}">${c.t}</th>`).join("")}</tr></thead><tbody>${
+ rows.map(r=>`<tr>${cols.map(c=>{const v=c.f?c.f(r):esc(r[c.k]);return `<td class="${c.n?"n":""} ${c.w?"wrap":""}">${v}</td>`}).join("")}</tr>`).join("")}</tbody></table></div>`}
+const periodSel=(id,withAll=true)=>`<select id="${id}">${withAll?'<option value="">All periods</option>':""}${S.periods.map(p=>`<option>${p}</option>`).join("")}</select>`;
+
+async function loadBrands(select){const bs=await api("/api/brands",{noAsof:true});
+ $("#brand").innerHTML=bs.map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join("")||"<option value=''>No brands yet</option>";
+ if(select)S.brand=select;else if(!S.brand&&bs.length)S.brand=bs[bs.length-1].id;$("#brand").value=S.brand||"";}
+function renderTabs(){$("#tabs").innerHTML=TABS.map(([k,l])=>`<button data-k="${k}" class="${S.tab===k?"on":""}">${l}</button>`).join("");
+ $("#tabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{S.tab=b.dataset.k;renderTabs();render()})}
+async function render(){const v=$("#view");
+ if(!S.brand){v.innerHTML=`<div class="empty card"><h2>No brand yet</h2><p class="muted">Load the demo brand to see every module with 3 months of data, or create a brand and import your CSVs.</p><button class="primary" onclick="$('#demo').click()">Load demo brand</button></div>`;return}
+ v.innerHTML=`<div class="card muted">Loading…</div>`;
+ try{await VIEWS[S.tab](v)}catch(e){v.innerHTML=`<div class="card bad">${esc(e.message)}</div>`}}
+
+const VIEWS={
+async overview(v){const o=await api(B("/overview"));S.periods=o.periods;const L=o.leakage,C=o.capital;
+ v.innerHTML=`<div class="grid">
+ ${kpi("Money leaking (found)",R(L.total_found),`${P(o.leak_pct_of_revenue)} of net revenue · ${L.by_rule.reduce((a,r)=>a+r.count,0)} items`)}
+ ${kpi("Recovered so far",R(L.recovered),`success fee ${R(L.success_fee)}`)}
+ ${kpi("Claims expiring in 7 days",R(L.expiring_7d),`${R(L.expired_unfiled)} already past window`)}
+ ${kpi("Borrowing base",R(C.borrowing_base),`on ${R(C.verified_receivables)} verified receivables`)}
+ ${kpi("Tax credit at risk",R(o.tax.at_risk),`${R(o.tax.claimable_in_portal)} confirmed in portal`)}
+ ${kpi("Orders auto-matched",P(o.orders.auto_matched_pct),`${o.orders.exceptions} exceptions of ${o.orders.total}`)}
+ ${kpi("Net revenue (books)",R(o.pnl.net_revenue),`net profit ${R(o.pnl.net_profit)}`)}</div>
+ <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
+ <div class="card"><h2>Where the money leaks</h2>${L.by_rule.map(r=>`<div style="margin:8px 0"><div class="row" style="margin:0;justify-content:space-between"><span>${esc(r.label)} <span class="muted">· ${r.count}</span></span><b>${R(r.leak)}</b></div><div class="bar"><i style="width:${100*r.leak/(L.by_rule[0]?.leak||1)}%"></i></div></div>`).join("")}</div>
+ <div class="card"><h2>Month-end close readiness</h2>${table([{t:"Period",k:"period"},{t:"Readiness",f:r=>`<div class="bar" style="width:120px"><i style="width:${r.score*100}%"></i></div>`},{t:"",f:r=>P(r.score)},{t:"Status",f:r=>stChip(r.status==="locked"?"locked":r.can_lock?"ready to lock":"blocked")}],o.close)}
+ <p class="note" style="margin-top:8px">Open “Close & audit” to see each check, lock a month and download the audit pack.</p></div></div>`},
+
+async recovery(v){const d=await api(B("/claims"));const s=d.summary;
+ v.innerHTML=`<div class="grid">${kpi("Open claims value",R(s.open_amount))}${kpi("Recovered",R(s.recovered))}${kpi("Expiring ≤7 days",R(s.expiring_7d))}${kpi("Past filing window",R(s.expired_unfiled))}</div>
+ <div class="row"><select id="fs"><option value="">All statuses</option><option>open</option><option>filed</option><option>recovered</option><option>rejected</option></select>
+ <select id="fr"><option value="">All leak types</option>${s.by_rule.map(r=>`<option value="${r.rule}">${esc(r.label)}</option>`).join("")}</select>
+ <span class="muted" id="cnt"></span></div><div id="ct"></div><div id="tk"></div>`;
+ const draw=()=>{const st=$("#fs").value,ru=$("#fr").value;const rows=d.rows.filter(r=>(!st||r.status===st)&&(!ru||r.rule===ru));$("#cnt").textContent=`${rows.length} claims · ${R(rows.reduce((a,r)=>a+r.leak_amount,0))}`;
+ $("#ct").innerHTML=table([{t:"Channel",k:"channel"},{t:"Leak type",k:"rule_label"},{t:"Ref",k:"ref"},{t:"Detail",k:"description",w:1},{t:"Amount",n:1,f:r=>N(r.leak_amount)},
+ {t:"Deadline",f:r=>`${r.deadline} ${r.status==="open"?stChip(r.urgency==="ok"?r.days_left+"d":r.urgency):""}`},{t:"Status",f:r=>stChip(r.status)},
+ {t:"Action",f:r=>`<button data-t="${r.id}">Ticket</button> ${r.status==="open"?`<button data-a="filed" data-id="${r.id}">Mark filed</button>`:""} ${["open","filed"].includes(r.status)?`<button data-a="recovered" data-id="${r.id}">Recovered</button> <button data-a="rejected" data-id="${r.id}">Rejected</button>`:""}`}],rows.slice(0,400),{h:620});
+ $("#ct").querySelectorAll("button[data-a]").forEach(b=>b.onclick=async()=>{const body={status:b.dataset.a};
+  if(b.dataset.a==="filed")body.ticket_ref=prompt("Marketplace ticket / case ID (optional)")||null;
+  if(b.dataset.a==="recovered"){const r=d.rows.find(x=>x.id==b.dataset.id);const a=prompt("Amount recovered (Rs)",r.leak_amount);if(a===null)return;body.recovered_amount=+a}
+  await api(B(`/claims/${b.dataset.id}`),{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify(body),noAsof:true});toast("Claim updated; books re-posted");render()});
+ $("#ct").querySelectorAll("button[data-t]").forEach(b=>b.onclick=async()=>{const t=await api(B(`/claims/${b.dataset.t}/ticket`),{noAsof:true});$("#tk").innerHTML=`<h3>Ticket text — copy into the seller portal</h3><pre>${esc(t)}</pre>`;$("#tk").scrollIntoView({behavior:"smooth"})})};
+ $("#fs").onchange=$("#fr").onchange=draw;draw()},
+
+async recon(v){const[o,b]=await Promise.all([api(B("/reconciliation/orders?limit=5000")),api(B("/reconciliation/bank"))]);
+ v.innerHTML=`<h2>Order → settlement</h2><div class="row">${Object.entries(o.counts).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`<button data-s="${k}">${stChip(k)} ${n}</button>`).join("")}<button data-s="">All</button></div><div id="ot"></div>
+ <h2>Settlement → bank</h2>${table([{t:"Channel",k:"channel"},{t:"Settlement",k:"settlement_id"},{t:"Date",k:"settlement_date"},{t:"Lines",k:"lines",n:1},{t:"Settlement net",n:1,f:r=>N(r.settlement_net)},{t:"Bank",n:1,f:r=>N(r.bank_amount)},{t:"Difference",n:1,f:r=>N(r.difference)},{t:"Status",f:r=>stChip(r.status)}],
+ b.sort((x,y)=>(x.status==="matched")-(y.status==="matched")),{h:420})}`;
+ const draw=s=>{const rows=o.rows.filter(r=>!s||r.recon_status===s);$("#ot").innerHTML=table([{t:"Order",k:"order_id"},{t:"Channel",k:"channel"},{t:"SKU",k:"sku"},{t:"Date",k:"order_date"},{t:"Ops status",k:"status_ops"},{t:"Gross",n:1,f:r=>N(r.gross)},{t:"Principal paid",n:1,f:r=>N(r.principal_paid)},{t:"Net received",n:1,f:r=>N(r.net_received)},{t:"Recon",f:r=>stChip(r.recon_status)},{t:"Note",k:"note"}],rows.slice(0,500),{h:460})};
+ v.querySelectorAll("button[data-s]").forEach(x=>x.onclick=()=>draw(x.dataset.s));draw("short_paid")},
+
+async qc(v){const d=await api(B("/quick-commerce"));
+ v.innerHTML=`<div class="grid">${d.channels.map(c=>kpi(c.channel.toUpperCase(),R(c.direct_buy_sales+c.consignment_sales),`fill rate ${P(c.fill_rate)} · ads netted ${R(c.ad_spend_netted)} (${P(c.ad_spend_pct_of_sales)}) · ${c.exceptions} exception POs`)).join("")}</div>
+ <p class="note">Each PO is traced PO → ASN → GRN → invoice → payment. Ad spend netted against payments is booked as marketing expense with input GST, not as a sales discount.</p>
+ ${table([{t:"Channel",k:"channel"},{t:"PO",k:"po_number"},{t:"Date",k:"po_date"},{t:"Stream",k:"stream"},{t:"Ordered",k:"ordered",n:1},{t:"Shipped",k:"shipped",n:1},{t:"Received",k:"received",n:1},{t:"Accepted",k:"accepted",n:1},{t:"Fill",n:1,f:r=>P(r.fill_rate)},
+ {t:"Invoice",n:1,f:r=>N(r.invoice_total)},{t:"Ads netted",n:1,f:r=>N(r.ad_deduction)},{t:"194Q",n:1,f:r=>N(r.tds_194q)},{t:"Net paid",n:1,f:r=>N(r.net_paid)},{t:"Flags",f:r=>r.flags.map(f=>chip(f.replaceAll("_"," "),["awaiting_payment","rejected_at_grn"].includes(f)?"":"bad")).join(" ")}],
+ d.pos.sort((a,b)=>(a.status==="clean")-(b.status==="clean")),{h:640})}`},
+
+async tax(v){const d=await api(B("/tax-credits"));const t=d.totals;
+ v.innerHTML=`<div class="grid">${kpi("Withheld by platforms",R(t.deducted))}${kpi("Confirmed in portal",R(t.claimable_in_portal))}${kpi("At risk (not in portal)",R(t.at_risk))}${kpi("Over-deducted",R(t.over_deducted))}</div>
+ ${t.periods_missing_portal_data.length?`<p class="note">Upload GSTR-2B / Form 26AS data for: ${t.periods_missing_portal_data.join(", ")}</p>`:""}
+ ${table([{t:"Period",k:"period"},{t:"Channel",k:"channel"},{t:"Section",k:"label"},{t:"Computed (law)",n:1,f:r=>N(r.computed)},{t:"Deducted (platform)",n:1,f:r=>N(r.deducted)},{t:"In portal",n:1,f:r=>N(r.portal)},{t:"At risk",n:1,f:r=>N(r.at_risk)},{t:"Status",f:r=>stChip(r.status)}],d.rows,{h:640})}`},
+
+async books(v){v.innerHTML=`<div class="row">${periodSel("bp")}<a id="tx" class="chip">Tally XML</a><a id="jx" class="chip">Journal CSV (Zoho / any ledger)</a></div><div id="bb"></div>`;
+ const draw=async()=>{const p=$("#bp").value,q=p?`?period=${p}`:"";$("#tx").href=B(`/export/tally.xml${q}`);$("#jx").href=B(`/export/journal.csv${q}`);
+ const[tb,pl,j]=await Promise.all([api(B(`/books/trial-balance${q}`)),api(B(`/books/pnl${q}`)),api(B(`/books/journal${q}${q?"&":"?"}limit=200`))]);
+ if(!$("#bb"))return;
+ $("#bb").innerHTML=`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(380px,1fr))"><div><h3>Profit & loss ${p||""}</h3>${table([{t:"Account",f:r=>r.total?`<b>${esc(r.name)}</b>`:esc(r.name)},{t:"Amount",n:1,f:r=>r.total?`<b>${N(r.amount)}</b>`:N(r.amount)}],[...pl.lines.filter(l=>l.amount),{name:"Net profit",amount:pl.net_profit,total:1}])}</div>
+ <div><h3>Trial balance ${p?"to "+p:""} ${stChip(tb.balanced?"pass":"fail")}</h3>${table([{t:"Account",k:"name"},{t:"Debit",n:1,f:r=>r.debit?N(r.debit):""},{t:"Credit",n:1,f:r=>r.credit?N(r.credit):""}],[...tb.rows,{name:"Total",debit:tb.total_debit,credit:tb.total_credit}])}</div></div>
+ <h3>Journal (${j.total} lines${j.total>200?", first 200":""})</h3>${table([{t:"Date",k:"date"},{t:"Vch",k:"voucher"},{t:"Source",k:"source"},{t:"Narration",k:"narration",w:1},{t:"Account",k:"account_name"},{t:"Debit",n:1,f:r=>r.debit?N(r.debit):""},{t:"Credit",n:1,f:r=>r.credit?N(r.credit):""},{t:"SKU",k:"sku"}],j.rows,{h:500})}`;};$("#bp").onchange=draw;draw()},
+
+async profit(v){v.innerHTML=`<div class="row">${periodSel("pp")}<label><input type="checkbox" id="pc"> split by channel</label></div><div id="pb"></div>`;
+ const draw=async()=>{const p=$("#pp").value,bc=$("#pc").checked;const d=await api(B(`/profitability?by_channel=${bc}${p?`&period=${p}`:""}`));if(!$("#pb"))return;
+ $("#pb").innerHTML=`<div class="grid">${kpi("Net revenue",R(d.totals.net_revenue))}${kpi("CM1 (after COGS)",R(d.totals.cm1))}${kpi("CM2 (after fees & freight)",R(d.totals.cm2))}${kpi("CM3 (after ads)",R(d.totals.cm3))}${kpi("Ties to books",d.ties_to_books?"Yes ✓":"No",d.ties_to_books?"SKU totals equal the P&L":"see tie-out")}</div>
+ ${table([{t:"SKU",k:"sku"},{t:"Name",k:"name"},...(bc?[{t:"Channel",k:"channel"}]:[]),{t:"Net revenue",n:1,f:r=>N(r.net_revenue)},{t:"COGS",n:1,f:r=>N(r.cogs)},{t:"CM1 %",n:1,f:r=>P(r.cm1_pct)},{t:"Fees+freight",n:1,f:r=>N(r.commission+r.fixed_fees+r.shipping)},{t:"CM2 %",n:1,f:r=>P(r.cm2_pct)},{t:"Ads",n:1,f:r=>N(r.ads)},{t:"CM3",n:1,f:r=>N(r.cm3)},{t:"CM3 %",n:1,f:r=>`<span class="chip ${r.cm3_pct<0.1?"bad":r.cm3_pct<0.25?"warn":"good"}">${P(r.cm3_pct)}</span>`}],d.rows,{h:520})}
+ <h3>Tie-out to ledger</h3>${table([{t:"Line",k:"line"},{t:"Account",k:"account"},{t:"Sum of SKUs",n:1,f:r=>N(r.sku_total)},{t:"Books",n:1,f:r=>N(r.books)},{t:"Difference",n:1,f:r=>N(r.difference)}],d.tie_out)}`};
+ $("#pp").onchange=$("#pc").onchange=draw;draw()},
+
+async capital(v){const d=await api(B("/capital"));const t=d.totals;
+ v.innerHTML=`<div class="grid">${kpi("Borrowing base",R(t.borrowing_base),"available against verified receivables")}${kpi("Verified receivables",R(t.verified_receivables))}${kpi("Overdue (excluded)",R(t.overdue))}${kpi("Under dispute (excluded)",R(t.under_claim))}${kpi("Ledger AR (books)",R(t.ledger_ar_total))}</div>
+ <p class="note">Advance rates: settled-awaiting-payout ${P(d.advance_rates.settled_awaiting_payout)}, delivered-within-SLA ${P(d.advance_rates.delivered_within_sla)}; single-channel cap ${P(d.max_single_channel_share)}. Lending is done by the partner NBFC/bank under RBI digital-lending rules; this platform supplies verified data. <a href="${B(`/capital/lender-pack.csv?as_of=${S.asof}`)}">Download lender pack (CSV)</a></p>
+ ${table([{t:"Channel",k:"channel"},{t:"Settled, awaiting payout",n:1,f:r=>N(r.settled_awaiting_payout)},{t:"Delivered, within SLA",n:1,f:r=>N(r.delivered_within_sla)},{t:"Overdue",n:1,f:r=>N(r.overdue)},{t:"Under claim",n:1,f:r=>N(r.under_claim)},{t:"Borrowing base",n:1,f:r=>`<b>${N(r.borrowing_base)}</b>${r.concentration_capped?" "+chip("capped","warn"):""}`},{t:"Ledger AR",n:1,f:r=>N(r.ledger_ar_balance)},
+ ...["0-15","16-30","31-60","60+"].map(b=>({t:"Age "+b,n:1,f:r=>N(r.aging[b])}))],d.rows)}`},
+
+async close(v){const o=await api(B("/overview"));S.periods=o.periods;
+ v.innerHTML=`<div class="row">${periodSel("cp",false)}<button id="lk" class="primary">Lock period</button><button id="ul">Unlock</button><a id="ap" class="chip">Download audit pack (.zip)</a></div><div id="cb"></div>`;
+ const sel=$("#cp");sel.value=S.periods[S.periods.length-2]||S.periods[0];
+ const draw=async()=>{const p=sel.value;const c=await api(B(`/close/${p}`));$("#ap").href=B(`/audit-pack/${p}.zip?as_of=${S.asof}`);
+ $("#lk").disabled=c.status==="locked";$("#ul").disabled=c.status!=="locked";
+ $("#cb").innerHTML=`<div class="grid">${kpi("Status",c.status==="locked"?"Locked 🔒":"Open",c.locked_at?"locked "+c.locked_at.slice(0,16).replace("T"," "):"")}${kpi("Readiness",P(c.score))}${kpi("Can lock",c.can_lock?"Yes":"No — fix failing checks")}</div>
+ ${table([{t:"Check",k:"label"},{t:"Result",f:r=>stChip(r.status)},{t:"Detail",k:"detail",w:1}],c.checks)}<p class="note">Locking freezes the period: journals for a locked month are never re-posted, and a snapshot of the trial balance and P&L is stored.</p>`};
+ sel.onchange=draw;$("#lk").onclick=async()=>{const r=await api(B(`/close/${sel.value}/lock`),{method:"POST"});if(!r.locked&&confirm("Checklist has failing items. Lock anyway?"))await api(B(`/close/${sel.value}/lock?force=true`),{method:"POST"});toast("Period updated");draw()};
+ $("#ul").onclick=async()=>{await api(B(`/close/${sel.value}/unlock`),{method:"POST",noAsof:true});toast("Period unlocked");draw()};draw()},
+
+async import(v){const t=await api("/api/templates",{noAsof:true});
+ v.innerHTML=`<div class="card"><h2>Import data</h2><p class="muted">Upload a CSV in the canonical template, or Amazon's native settlement V2 flat file. Re-uploading is safe (upserts). Engines re-run automatically after each import.</p>
+ <div class="row"><select id="ik">${Object.keys(t).map(k=>`<option>${k}</option>`).join("")}</select><input type="file" id="if" accept=".csv,.txt,.tsv"><button class="primary" id="ib">Upload</button><a id="it" class="chip">Download template</a></div>
+ <div id="ir"></div><h3>Templates</h3>${table([{t:"Kind",k:"k"},{t:"Columns",f:r=>`<code>${esc(r.c)}</code>`,w:1}],Object.entries(t).map(([k,c])=>({k,c:c.join(", ")})))}</div>
+ <div class="card" style="margin-top:12px"><h2>New brand</h2><div class="row"><input id="nb" placeholder="Brand name"><input id="ng" placeholder="GSTIN (optional)"><button id="nbb">Create</button></div></div>`;
+ const setT=()=>$("#it").href=`/api/templates/${$("#ik").value}.csv`;$("#ik").onchange=setT;setT();
+ $("#ib").onclick=async()=>{const f=$("#if").files[0];if(!f)return toast("Choose a file");const fd=new FormData();fd.append("file",f);
+  try{const r=await api(B(`/import/${$("#ik").value}`),{method:"POST",body:fd});$("#ir").innerHTML=`<pre>${esc(JSON.stringify(r,null,2))}</pre>`;toast(`Imported ${r.imported} rows`)}catch(e){$("#ir").innerHTML=`<div class="card bad">${esc(e.message)}</div>`}};
+ $("#nbb").onclick=async()=>{const r=await api("/api/brands",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name:$("#nb").value||"New brand",gstin:$("#ng").value||null}),noAsof:true});await loadBrands(r.id);toast("Brand created — now import its data");render()}},
+};
+
+$("#asof").value=S.asof=new Date().toISOString().slice(0,10);
+$("#asof").onchange=()=>{S.asof=$("#asof").value;render()};
+$("#brand").onchange=()=>{S.brand=+$("#brand").value;render()};
+$("#rerun").onclick=async()=>{if(!S.brand)return;const r=await api(B("/run"),{method:"POST"});toast(`Re-ran: ${r.entries_posted} journal entries, ${r.claims_created} new claims`);render()};
+$("#demo").onclick=async()=>{$("#demo").disabled=true;toast("Generating 3 months of demo data…");try{const r=await api("/api/demo",{method:"POST",noAsof:true});S.asof=$("#asof").value=r.as_of;await loadBrands(r.brand_id);S.tab="overview";renderTabs();render()}finally{$("#demo").disabled=false}};
+renderTabs();loadBrands().then(render);
+</script>
+</body>
+</html>

@@ -63,6 +63,10 @@ For your first pilots, map each client's exports into the templates (a pandas no
 Add native adapters (Flipkart, Myntra, Blinkit, Zepto, Shiprocket) one at a time as clients
 need them, following `_import_amazon_settlement_v2` in `app/ingest/parsers.py`.
 
+## Deploying
+
+Step-by-step guide (Supabase + Render, about 30 minutes): **[DEPLOY.md](DEPLOY.md)**.
+
 ## Production on Supabase
 
 ```bash
@@ -97,8 +101,8 @@ periods survive re-runs. Statutory rates and rate cards live in `app/config.py`.
 
 - **Money is stored as floats, rounded to paise.** Move to `NUMERIC(14,2)`/`Decimal` before
   the first paying client.
-- **No auth in the FastAPI layer yet.** RLS exists in the database; wire Supabase Auth JWTs
-  into the API before going live.
+- **One shared password (`APP_PASSWORD`), not per-user logins.** RLS exists in the database;
+  wire Supabase Auth JWTs into the API before onboarding paying clients.
 - **Live connectors** (Amazon SP-API, Shopify API, Flipkart) are not built; data comes in as CSV.
 - **Claims are not filed automatically.** The software prepares the ticket text, and a person
   (or a future browser/API automation) files it.

@@ -178,6 +178,7 @@ $("#asof").onchange=()=>{S.asof=$("#asof").value;render()};
 $("#brand").onchange=()=>{S.brand=+$("#brand").value;render()};
 $("#rerun").onclick=async()=>{if(!S.brand)return;const r=await api(B("/run"),{method:"POST"});toast(`Re-ran: ${r.entries_posted} journal entries, ${r.claims_created} new claims`);render()};
 $("#demo").onclick=async()=>{$("#demo").disabled=true;toast("Generating 3 months of demo data…");try{const r=await api("/api/demo",{method:"POST",noAsof:true});S.asof=$("#asof").value=r.as_of;await loadBrands(r.brand_id);S.tab="overview";renderTabs();render()}finally{$("#demo").disabled=false}};
+api("/api/config",{noAsof:true}).then(c=>{if(!c.demo_enabled)$("#demo").style.display="none"}).catch(()=>{});
 renderTabs();loadBrands().then(render);
 </script>
 </body>

@@ -173,3 +173,23 @@ def test_api_smoke(demo):
     assert r.json()["status"] == "filed"
     bad = c.post(f"/api/brands/{bid}/import/orders", files={"file": ("x.csv", b"foo,bar\n1,2\n")})
     assert bad.status_code == 400
+
+
+def test_password_gate(demo, monkeypatch):
+    import base64
+
+    import app.main as m
+    monkeypatch.setattr(m, "APP_PASSWORD", "s3cret")
+    c = TestClient(m.app)
+    assert c.get("/healthz").status_code == 200
+    assert c.get("/api/brands").status_code == 401
+    bad = base64.b64encode(b"admin:wrong").decode()
+    assert c.get("/api/brands", headers={"Authorization": f"Basic {bad}"}).status_code == 401
+    good = base64.b64encode(b"admin:s3cret").decode()
+    assert c.get("/api/brands", headers={"Authorization": f"Basic {good}"}).status_code == 200
+
+
+def test_demo_can_be_disabled(demo, monkeypatch):
+    import app.main as m
+    monkeypatch.setattr(m, "ENABLE_DEMO", False)
+    assert TestClient(m.app).post("/api/demo").status_code == 403

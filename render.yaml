@@ -1,0 +1,16 @@
+# Render blueprint: Dashboard → New → Blueprint → pick this repo.
+services:
+  - type: web
+    name: d2c-finance-os
+    runtime: docker
+    plan: starter            # always-on; "free" works for trying it but sleeps when idle
+    region: singapore        # closest Render region to India
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL    # Supabase → Connect → Session pooler connection string
+        sync: false
+      - key: APP_PASSWORD    # password for the whole app (user name: admin)
+        generateValue: true
+      - key: ENABLE_DEMO
+        value: "false"

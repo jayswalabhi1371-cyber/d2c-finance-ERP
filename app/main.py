@@ -2,11 +2,14 @@
 
     uvicorn app.main:app --reload      # then open http://localhost:8000
 """
+import base64
+import os
+import secrets
 from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -33,6 +36,43 @@ async def lifespan(_app):
 app = FastAPI(lifespan=lifespan, title="D2C Finance OS", version="0.1.0",
               description="Settlement-to-ledger reconciliation, recovery, quick commerce, tax credits, "
                           "SKU profitability, receivable-backed capital and month-end close for D2C brands.")
+
+# ---- Deployment settings (environment variables) ---------------------------------
+# APP_PASSWORD  set it in production: every page and API call then needs this password
+#               (HTTP Basic auth; user name APP_USERNAME, default "admin"). Interim gate
+#               until per-user Supabase Auth is wired in.
+# ENABLE_DEMO   "true" to allow the "Load demo brand" button (default: on only when no
+#               password is set, i.e. local development).
+APP_USERNAME = os.environ.get("APP_USERNAME", "admin")
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+ENABLE_DEMO = os.environ.get("ENABLE_DEMO", "false" if APP_PASSWORD else "true").lower() == "true"
+
+
+@app.middleware("http")
+async def password_gate(request: Request, call_next):
+    if APP_PASSWORD and request.url.path != "/healthz":
+        ok = False
+        header = request.headers.get("authorization", "")
+        if header.lower().startswith("basic "):
+            try:
+                user, _, pw = base64.b64decode(header[6:]).decode().partition(":")
+                ok = secrets.compare_digest(user, APP_USERNAME) & secrets.compare_digest(pw, APP_PASSWORD)
+            except (ValueError, UnicodeDecodeError):
+                ok = False
+        if not ok:
+            return Response("Authentication required", status_code=401,
+                            headers={"WWW-Authenticate": 'Basic realm="D2C Finance OS"'})
+    return await call_next(request)
+
+
+@app.get("/healthz", include_in_schema=False)
+def healthz():
+    return {"ok": True}
+
+
+@app.get("/api/config")
+def config():
+    return {"demo_enabled": ENABLE_DEMO}
 
 
 def _brand(s: Session, brand_id: int) -> Brand:
@@ -75,6 +115,8 @@ def create_brand(body: BrandIn, s: Session = Depends(get_session)):
 
 @app.post("/api/demo")
 def create_demo(s: Session = Depends(get_session)):
+    if not ENABLE_DEMO:
+        raise HTTPException(403, "Demo data is disabled on this server (set ENABLE_DEMO=true to allow).")
     bid = seed_demo(s)
     result = run_all(s, bid, DEMO_AS_OF)
     return {"brand_id": bid, "as_of": DEMO_AS_OF.isoformat(), **result}
